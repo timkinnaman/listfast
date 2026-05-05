@@ -123,6 +123,7 @@ app.get('/login-ebay', (req, res) => {
 
 app.get('/callback', async (req, res) => {
   const code = req.query.code;
+console.log(req.query);
 
   if (!code) {
     return res.send('No authorization code received from eBay.');
