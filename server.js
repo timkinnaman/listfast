@@ -221,30 +221,6 @@ app.post('/create-ebay-draft', async (req, res) => {
 
   const listing = req.body;
 
-  const required = [
-    'sku',
-    'title',
-    'description',
-    'price',
-    'quantity',
-    'condition',
-    'categoryId',
-    'inventoryLocationKey',
-    'paymentPolicyId',
-    'returnPolicyId',
-    'fulfillmentPolicyId'
-  ];
-
-  const missing = required.filter((field) => !listing[field]);
-
-  if (missing.length) {
-    return res.status(400).json({
-      success: false,
-      message: 'Missing required fields before eBay draft can be created.',
-      missing
-    });
-  }
-
   const sku = String(listing.sku).trim();
 
   const inventoryBody = {
