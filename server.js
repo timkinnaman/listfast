@@ -8,6 +8,10 @@ const crypto = require('crypto');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+app.get('/', (req, res) => {
+  res.send('ListFast is running 🚀');
+});
+
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
