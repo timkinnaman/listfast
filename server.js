@@ -216,87 +216,123 @@ app.get('/ebay-settings', async (req, res) => {
 // This creates inventory + an unpublished offer.
 // It does NOT publish the listing live.
 
+// ---------------- Create Real eBay Seller Hub Draft ----------------
+
+function csvCell(value) {
+  const text = value == null ? '' : String(value);
+  return `"${text.replace(/"/g, '""')}"`;
+}
+
+function makeDraftCsv(listing) {
+  const headers = [
+    'Action(SiteID=US|Country=US|Currency=USD|Version=1193|CC=UTF-8)',
+    'Custom label (SKU)',
+    'Category ID',
+    'Title',
+    'Description',
+    'Condition ID',
+    'Format',
+    'Start price',
+    'Quantity',
+    'Item photo URL'
+  ];
+
+  const row = [
+    'Draft',
+    listing.sku || '',
+    listing.categoryId || '262388',
+    listing.title || '',
+    listing.description || '',
+    listing.conditionId || '',
+    listing.format || '',
+    listing.price || '',
+    listing.quantity || '',
+    Array.isArray(listing.imageUrls) ? listing.imageUrls[0] || '' : ''
+  ];
+
+  return `${headers.map(csvCell).join(',')}\n${row.map(csvCell).join(',')}\n`;
+}
+
 app.post('/create-ebay-draft', async (req, res) => {
   const token = requireToken(res);
   if (!token) return;
 
-  const listing = req.body;
+  const listing = req.body || {};
+  const csv = makeDraftCsv(listing);
 
-  const sku = String(listing.sku).trim();
-
-  const inventoryBody = {
-    product: {
-      title: listing.title,
-      description: listing.description,
-      aspects: listing.aspects || {},
-      imageUrls: listing.imageUrls || []
-    },
-    condition: listing.condition,
-    availability: {
-      shipToLocationAvailability: {
-        quantity: Number(listing.quantity)
-      }
-    }
-  };
-
-  const inventoryResult = await ebayRequest(
-    `https://api.ebay.com/sell/inventory/v1/inventory_item/${encodeURIComponent(sku)}`,
-    {
-      method: 'PUT',
-      body: JSON.stringify(inventoryBody)
-    }
-  );
-
-  if (!inventoryResult.ok && inventoryResult.status !== 204) {
-    return res.status(400).json({
-      success: false,
-      step: 'inventory_item',
-      ebayResponse: inventoryResult.data
-    });
-  }
-
-  const offerBody = {
-    sku,
-    marketplaceId: MARKETPLACE_ID,
-    format: 'FIXED_PRICE',
-    availableQuantity: Number(listing.quantity),
-    categoryId: listing.categoryId,
-    merchantLocationKey: listing.inventoryLocationKey,
-    listingDescription: listing.description,
-    pricingSummary: {
-      price: {
-        value: String(listing.price),
-        currency: 'USD'
-      }
-    },
-    listingPolicies: {
-      paymentPolicyId: listing.paymentPolicyId,
-      returnPolicyId: listing.returnPolicyId,
-      fulfillmentPolicyId: listing.fulfillmentPolicyId
-    }
-  };
-
-  const offerResult = await ebayRequest(
-    'https://api.ebay.com/sell/inventory/v1/offer',
-    {
+  try {
+    const createTaskResponse = await fetch('https://api.ebay.com/sell/feed/v1/task', {
       method: 'POST',
-      body: JSON.stringify(offerBody)
-    }
-  );
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json',
+        'X-EBAY-C-MARKETPLACE-ID': 'EBAY_US'
+      },
+      body: JSON.stringify({
+        feedType: 'FX_LISTING',
+        schemaVersion: '1.0'
+      })
+    });
 
-  if (!offerResult.ok) {
-    return res.status(400).json({
+    const createTaskText = await createTaskResponse.text();
+    const location = createTaskResponse.headers.get('location') || '';
+    const taskId = location.split('/').pop();
+
+    if (!createTaskResponse.ok || !taskId) {
+      return res.status(400).json({
+        success: false,
+        step: 'create_task',
+        status: createTaskResponse.status,
+        location,
+        response: createTaskText
+      });
+    }
+
+    const form = new FormData();
+    form.append(
+      'file',
+      new Blob([csv], { type: 'text/csv' }),
+      `listfast-draft-${Date.now()}.csv`
+    );
+
+    const uploadResponse = await fetch(
+      `https://api.ebay.com/sell/feed/v1/task/${taskId}/upload_file`,
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'X-EBAY-C-MARKETPLACE-ID': 'EBAY_US'
+        },
+        body: form
+      }
+    );
+
+    const uploadText = await uploadResponse.text();
+
+    if (!uploadResponse.ok && uploadResponse.status !== 202) {
+      return res.status(400).json({
+        success: false,
+        step: 'upload_file',
+        status: uploadResponse.status,
+        taskId,
+        response: uploadText,
+        csv
+      });
+    }
+
+    return res.json({
+      success: true,
+      message: 'eBay draft feed uploaded. eBay will process it shortly. Check Seller Hub drafts/reports.',
+      taskId,
+      csv
+    });
+  } catch (error) {
+    return res.status(500).json({
       success: false,
-      step: 'offer',
-      ebayResponse: offerResult.data
+      step: 'server_error',
+      error: error.message
     });
   }
-
-  res.json({
-    success: true,
-    message: 'eBay draft/unpublished offer created. It has NOT been published live.',
-    offer: offerResult.data
-  });
 });
 
 // -------------------- Server --------------------
