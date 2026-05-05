@@ -1,0 +1,418 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>ListFast</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+
+  <style>
+    body {
+      font-family: Arial, sans-serif;
+      padding: 16px;
+      max-width: 760px;
+      margin: auto;
+      background: #f5f5f5;
+    }
+
+    h2, h3 {
+      text-align: center;
+    }
+
+    label {
+      font-weight: bold;
+      display: block;
+      margin-top: 12px;
+    }
+
+    input, textarea, select, button {
+      width: 100%;
+      padding: 11px;
+      margin-top: 6px;
+      font-size: 15px;
+      box-sizing: border-box;
+    }
+
+    textarea {
+      min-height: 90px;
+    }
+
+    button {
+      font-weight: bold;
+      cursor: pointer;
+      margin-top: 12px;
+    }
+
+    .section {
+      background: white;
+      padding: 15px;
+      margin-top: 16px;
+      border-radius: 8px;
+      border: 1px solid #ddd;
+    }
+
+    .status {
+      text-align: center;
+      font-weight: bold;
+      margin-bottom: 10px;
+    }
+
+    .danger {
+      background: #ffe0e0;
+    }
+
+    .success {
+      color: green;
+    }
+
+    .error {
+      color: darkred;
+    }
+
+    pre {
+      white-space: pre-wrap;
+      background: #eee;
+      padding: 10px;
+      border-radius: 6px;
+      font-size: 13px;
+    }
+  </style>
+</head>
+
+<body>
+
+<h2>ListFast</h2>
+
+<div class="section">
+  <h3>eBay Connection</h3>
+
+  <div id="ebayStatus" class="status">Checking eBay connection...</div>
+
+  <button onclick="window.location.href='/login-ebay'">
+    Connect / Reconnect eBay
+  </button>
+
+  <button onclick="loadEbaySettings()">
+    Load eBay Policies & Locations
+  </button>
+</div>
+
+<div class="section">
+  <h3>Load Template</h3>
+
+  <label>Saved Templates</label>
+  <select id="templateList"></select>
+
+  <button onclick="loadTemplate()">Load Selected Template</button>
+  <button class="danger" onclick="deleteTemplate()">Delete Selected Template</button>
+</div>
+
+<div class="section">
+  <h3>Create / Edit Template</h3>
+
+  <label>Template Name</label>
+  <input id="templateName" placeholder="Example: Standard Mold Listing">
+
+  <label>SKU</label>
+  <input id="sku" placeholder="SKU or inventory code">
+
+  <label>Title</label>
+  <input id="title" placeholder="Optional title or title format">
+
+  <label>Price</label>
+  <input id="price" placeholder="Default price">
+
+  <label>Quantity</label>
+  <input id="quantity" type="number" value="1" min="1">
+
+  <label>Condition</label>
+  <input id="condition" placeholder="Example: 3000 for Used, 1000 for New">
+
+  <label>Condition Notes</label>
+  <textarea id="conditionNotes" placeholder="Default condition notes"></textarea>
+
+  <label>Description</label>
+  <textarea id="description" placeholder="Default description"></textarea>
+
+  <label>Category ID</label>
+  <input id="categoryId" placeholder="eBay category ID">
+
+  <label>Payment Policy</label>
+  <select id="paymentPolicyId">
+    <option value="">Load eBay settings first</option>
+  </select>
+
+  <label>Return Policy</label>
+  <select id="returnPolicyId">
+    <option value="">Load eBay settings first</option>
+  </select>
+
+  <label>Fulfillment / Shipping Policy</label>
+  <select id="fulfillmentPolicyId">
+    <option value="">Load eBay settings first</option>
+  </select>
+
+  <label>Inventory Location</label>
+  <select id="inventoryLocationKey">
+    <option value="">Load eBay settings first</option>
+  </select>
+
+  <label>Custom Notes</label>
+  <textarea id="customNotes" placeholder="Private notes for this template"></textarea>
+
+  <button onclick="saveTemplate()">Save Template</button>
+</div>
+
+<div class="section">
+  <h3>Create eBay Draft / Unpublished Offer</h3>
+
+  <button onclick="createEbayDraft()">Create eBay Draft</button>
+
+  <pre id="resultBox">Results will show here.</pre>
+</div>
+
+<script>
+async function getTemplates() {
+  const res = await fetch('/templates');
+  return await res.json();
+}
+
+async function saveTemplates(templates) {
+  await fetch('/templates', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(templates)
+  });
+}
+
+async function refreshTemplateList() {
+  const templates = await getTemplates();
+  const list = document.getElementById("templateList");
+
+  list.innerHTML = "";
+
+  const names = Object.keys(templates);
+
+  if (names.length === 0) {
+    const option = document.createElement("option");
+    option.textContent = "No templates saved yet";
+    option.value = "";
+    list.appendChild(option);
+    return;
+  }
+
+  names.forEach(name => {
+    const option = document.createElement("option");
+    option.textContent = name;
+    option.value = name;
+    list.appendChild(option);
+  });
+}
+
+async function saveTemplate() {
+  const name = document.getElementById("templateName").value.trim();
+
+  if (!name) {
+    alert("Please enter a template name.");
+    return;
+  }
+
+  const templates = await getTemplates();
+
+  templates[name] = collectFormData();
+
+  await saveTemplates(templates);
+  await refreshTemplateList();
+
+  document.getElementById("templateList").value = name;
+
+  alert("Template saved.");
+}
+
+async function loadTemplate() {
+  const selected = document.getElementById("templateList").value;
+
+  if (!selected) {
+    alert("No template selected.");
+    return;
+  }
+
+  const templates = await getTemplates();
+  const template = templates[selected];
+
+  document.getElementById("templateName").value = selected;
+
+  setField("sku", template.sku);
+  setField("title", template.title);
+  setField("price", template.price);
+  setField("quantity", template.quantity || "1");
+  setField("condition", template.condition);
+  setField("conditionNotes", template.conditionNotes);
+  setField("description", template.description);
+  setField("categoryId", template.categoryId);
+  setField("customNotes", template.customNotes);
+
+  setField("paymentPolicyId", template.paymentPolicyId);
+  setField("returnPolicyId", template.returnPolicyId);
+  setField("fulfillmentPolicyId", template.fulfillmentPolicyId);
+  setField("inventoryLocationKey", template.inventoryLocationKey);
+}
+
+async function deleteTemplate() {
+  const selected = document.getElementById("templateList").value;
+
+  if (!selected) {
+    alert("No template selected.");
+    return;
+  }
+
+  if (!confirm("Delete this template?")) return;
+
+  const templates = await getTemplates();
+  delete templates[selected];
+
+  await saveTemplates(templates);
+  await refreshTemplateList();
+  clearFields();
+
+  alert("Template deleted.");
+}
+
+function clearFields() {
+  const fields = [
+    "templateName",
+    "sku",
+    "title",
+    "price",
+    "quantity",
+    "condition",
+    "conditionNotes",
+    "description",
+    "categoryId",
+    "customNotes",
+    "paymentPolicyId",
+    "returnPolicyId",
+    "fulfillmentPolicyId",
+    "inventoryLocationKey"
+  ];
+
+  fields.forEach(id => setField(id, id === "quantity" ? "1" : ""));
+}
+
+function collectFormData() {
+  return {
+    sku: getField("sku"),
+    title: getField("title"),
+    price: getField("price"),
+    quantity: getField("quantity"),
+    condition: getField("condition"),
+    conditionNotes: getField("conditionNotes"),
+    description: getField("description"),
+    categoryId: getField("categoryId"),
+    paymentPolicyId: getField("paymentPolicyId"),
+    returnPolicyId: getField("returnPolicyId"),
+    fulfillmentPolicyId: getField("fulfillmentPolicyId"),
+    inventoryLocationKey: getField("inventoryLocationKey"),
+    customNotes: getField("customNotes")
+  };
+}
+
+function getField(id) {
+  return document.getElementById(id).value;
+}
+
+function setField(id, value) {
+  const field = document.getElementById(id);
+  if (field) field.value = value || "";
+}
+
+async function checkEbayConnection() {
+  try {
+    const res = await fetch('/ebay-status');
+    const data = await res.json();
+
+    document.getElementById("ebayStatus").innerText =
+      data.connected ? "✅ eBay Connected" : "❌ eBay Not Connected";
+  } catch (err) {
+    document.getElementById("ebayStatus").innerText = "❌ Error checking eBay connection";
+  }
+}
+
+async function loadEbaySettings() {
+  alert("Button works");
+
+  const resultBox = document.getElementById("resultBox");
+  resultBox.textContent = "Loading eBay settings...";
+
+  try {
+    const res = await fetch('/ebay-settings');
+    const data = await res.json();
+
+    fillPolicySelect("paymentPolicyId", data.paymentPolicies?.paymentPolicies, "paymentPolicyId", "name");
+    fillPolicySelect("returnPolicyId", data.returnPolicies?.returnPolicies, "returnPolicyId", "name");
+    fillPolicySelect("fulfillmentPolicyId", data.fulfillmentPolicies?.fulfillmentPolicies, "fulfillmentPolicyId", "name");
+    fillPolicySelect("inventoryLocationKey", data.locations?.locations, "merchantLocationKey", "merchantLocationKey");
+
+    resultBox.textContent = JSON.stringify(data, null, 2);
+  } catch (err) {
+    resultBox.textContent = "Error loading eBay settings: " + err.message;
+  }
+}
+
+function fillPolicySelect(selectId, items, valueKey, labelKey) {
+  const select = document.getElementById(selectId);
+  select.innerHTML = "";
+
+  if (!items || !Array.isArray(items) || items.length === 0) {
+    const option = document.createElement("option");
+    option.value = "";
+    option.textContent = "No options loaded";
+    select.appendChild(option);
+    return;
+  }
+
+  const blank = document.createElement("option");
+  blank.value = "";
+  blank.textContent = "Select one";
+  select.appendChild(blank);
+
+  items.forEach(item => {
+    const option = document.createElement("option");
+    option.value = item[valueKey];
+    option.textContent = item[labelKey] || item[valueKey];
+    select.appendChild(option);
+  });
+}
+
+async function createEbayDraft() {
+  const listing = collectFormData();
+  const resultBox = document.getElementById("resultBox");
+
+  resultBox.textContent = "Creating eBay draft / unpublished offer...";
+
+  try {
+    const res = await fetch('/create-ebay-draft', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(listing)
+    });
+
+    const data = await res.json();
+
+    resultBox.textContent = JSON.stringify(data, null, 2);
+
+    if (data.success) {
+      alert("Draft / unpublished offer created.");
+    } else {
+      alert(data.message || "Could not create draft.");
+    }
+  } catch (err) {
+    resultBox.textContent = "Error creating draft: " + err.message;
+    alert("Error creating draft.");
+  }
+}
+
+refreshTemplateList();
+checkEbayConnection();
+</script>
+
+</body>
+</html>
