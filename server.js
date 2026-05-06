@@ -122,7 +122,7 @@ app.get('/login-ebay', (req, res) => {
   res.redirect(url);
 });
 
-app.get('/auth/callback', async (req, res) => {
+app.get('/callback', async (req, res) => {
   const code = req.query.code;
 console.log(req.query);
 
