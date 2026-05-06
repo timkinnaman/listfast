@@ -106,6 +106,7 @@ app.get('/login-ebay', (req, res) => {
     'https://api.ebay.com/oauth/api_scope/sell.inventory',
     'https://api.ebay.com/oauth/api_scope/sell.account',
     'https://api.ebay.com/oauth/api_scope/sell.account.readonly'
+    'https://api.ebay.com/oauth/api_scope/sell.item.draft',
   ].join(' ');
 
   const state = crypto.randomBytes(16).toString('hex');
@@ -253,78 +254,66 @@ function makeDraftCsv(listing) {
   return `${headers.map(csvCell).join(',')}\n${row.map(csvCell).join(',')}\n`;
 }
 
+// ---------------- Create Real eBay Draft ----------------
+
 app.post('/create-ebay-draft', async (req, res) => {
   const token = requireToken(res);
   if (!token) return;
 
   const listing = req.body || {};
-  const csv = makeDraftCsv(listing);
+
+  const body = {
+    categoryId: listing.categoryId || '262388',
+    condition: listing.condition || 'USED_GOOD',
+    format: listing.format || 'FIXED_PRICE',
+    pricingSummary: {
+      price: {
+        currency: 'USD',
+        value: listing.price || '0.99'
+      }
+    },
+    product: {
+      title: listing.title || 'Untitled Draft',
+      description: listing.description || '',
+      imageUrls: Array.isArray(listing.imageUrls) ? listing.imageUrls : []
+    }
+  };
 
   try {
-    const createTaskResponse = await fetch('https://api.ebay.com/sell/feed/v1/task', {
+    const response = await fetch('https://api.ebay.com/sell/listing/v1_beta/item_draft/', {
       method: 'POST',
       headers: {
         Authorization: `Bearer ${token}`,
         'Content-Type': 'application/json',
+        'Content-Language': 'en-US',
         'X-EBAY-C-MARKETPLACE-ID': 'EBAY_US'
       },
-      body: JSON.stringify({
-        feedType: 'FX_LISTING',
-        schemaVersion: '1.0'
-      })
+      body: JSON.stringify(body)
     });
 
-    const createTaskText = await createTaskResponse.text();
-    const location = createTaskResponse.headers.get('location') || '';
-    const taskId = location.split('/').pop();
+    const text = await response.text();
 
-    if (!createTaskResponse.ok || !taskId) {
+    if (!response.ok) {
       return res.status(400).json({
         success: false,
-        step: 'create_task',
-        status: createTaskResponse.status,
-        location,
-        response: createTaskText
+        step: 'create_item_draft',
+        status: response.status,
+        response: text,
+        sent: body
       });
     }
 
-    const form = new FormData();
-    form.append(
-      'file',
-      new Blob([csv], { type: 'text/csv' }),
-      `listfast-draft-${Date.now()}.csv`
-    );
-
-    const uploadResponse = await fetch(
-      `https://api.ebay.com/sell/feed/v1/task/${taskId}/upload_file`,
-      {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${token}`,
-          'X-EBAY-C-MARKETPLACE-ID': 'EBAY_US'
-        },
-        body: form
-      }
-    );
-
-    const uploadText = await uploadResponse.text();
-
-    if (!uploadResponse.ok && uploadResponse.status !== 202) {
-      return res.status(400).json({
-        success: false,
-        step: 'upload_file',
-        status: uploadResponse.status,
-        taskId,
-        response: uploadText,
-        csv
-      });
+    let data;
+    try {
+      data = JSON.parse(text);
+    } catch {
+      data = text;
     }
 
     return res.json({
       success: true,
-      message: 'eBay draft feed uploaded. eBay will process it shortly. Check Seller Hub drafts/reports.',
-      taskId,
-      csv
+      message: 'eBay draft created.',
+      draft: data
     });
   } catch (error) {
     return res.status(500).json({
