@@ -114,7 +114,7 @@ app.get('/login-ebay', (req, res) => {
   const url =
     'https://auth.ebay.com/oauth2/authorize' +
     '?client_id=' + encodeURIComponent(process.env.EBAY_CLIENT_ID) +
-    '&redirect_uri=' + encodeURIComponent(process.env.EBAY_REDIRECT_URI) +
+    '&redirect_uri=' + encodeURIComponent(process.env.EBAY_RUNAME) +
     '&response_type=code' +
     '&scope=' + encodeURIComponent(scopes) +
     '&state=' + encodeURIComponent(state);
