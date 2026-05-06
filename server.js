@@ -134,7 +134,7 @@ console.log(req.query);
     process.env.EBAY_CLIENT_ID + ':' + process.env.EBAY_CLIENT_SECRET
   ).toString('base64');
 
-  const response = await fetch('https://api.ebay.com/identity/v1/oauth2/token', {
+  const response = await fetch('https://api.ebay.com/sell/listing/v1_beta/item_draft', {
     method: 'POST',
     headers: {
       Authorization: 'Basic ' + basicAuth,
