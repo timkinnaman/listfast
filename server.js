@@ -114,7 +114,7 @@ app.get('/login-ebay', (req, res) => {
   const url =
     'https://auth.ebay.com/oauth2/authorize' +
     '?client_id=' + encodeURIComponent(process.env.EBAY_CLIENT_ID) +
-    '&redirect_uri=' + encodeURIComponent(process.env.EBAY_RUNAME) +
+    '&redirect_uri=' + encodeURIComponent(process.env.EBAY_REDIRECT_URI) +
     '&response_type=code' +
     '&scope=' + encodeURIComponent(scopes) +
     '&state=' + encodeURIComponent(state);
@@ -122,7 +122,7 @@ app.get('/login-ebay', (req, res) => {
   res.redirect(url);
 });
 
-app.get('/callback', async (req, res) => {
+app.get('/auth/callback', async (req, res) => {
   const code = req.query.code;
 console.log(req.query);
 
